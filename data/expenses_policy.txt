@@ -1,0 +1,33 @@
+Contoso Travel & Expenses Policy
+================================
+
+This policy describes the maximum reimbursable amounts for business travel
+expenses incurred by employees of Contoso Ltd. All claims must be submitted
+within 30 days of the expense being incurred and accompanied by an itemized
+receipt.
+
+1. Ground transportation
+   - Taxi: up to $75 per ride, or $150 per day in total.
+   - Ride-share (Uber/Lyft): up to $60 per ride.
+   - Rental car: economy or compact class only, up to $80 per day.
+   - Public transit: actual cost, no upper limit.
+
+2. Lodging
+   - Standard cities: up to $200 per night.
+   - High-cost cities (NYC, SF, London, Tokyo): up to $325 per night.
+
+3. Meals (per diem)
+   - Breakfast: $20
+   - Lunch: $30
+   - Dinner: $60
+   - Alcohol is not reimbursable.
+
+4. Air travel
+   - Economy class for flights under 6 hours.
+   - Premium economy permitted for flights over 6 hours.
+   - Business class only with VP-level approval.
+
+5. Mileage (personal vehicle)
+   - $0.67 per mile, parking and tolls reimbursable at cost.
+
+Questions about this policy should be directed to expenses@contoso.example.com.
