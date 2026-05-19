@@ -1,0 +1,382 @@
+================================================================
+TUTORIAL: Build a travel assistant in one Python file using
+Azure Foundry's file_search + web_search tools
+================================================================
+
+What you are building
+
+    A single Python script that uploads a few travel brochures
+    to an Azure Foundry vector store, then runs an interactive
+    chat where the model picks between searching your brochures
+    and searching the web to answer each question.
+
+----------------------------------------------------------------
+Step 1. Configure Azure Foundry
+----------------------------------------------------------------
+
+You need three pieces of information from Foundry: an endpoint
+URL, an API key, and the name of a deployed model. Here is how
+to get all three from scratch.
+
+1. Open the Foundry portal in a browser:
+
+       https://ai.azure.com
+
+   Sign in with your Azure account.
+
+2. Create a project, or open an existing one. In the sidebar
+   choose Projects, then either pick an existing project or
+   click New project. Pick a region close to you and accept
+   the defaults.
+
+3. Deploy a model. Inside the project, open Models + endpoints
+   (sometimes labelled Deployments) under My assets. Click
+   Deploy model and pick a tool-capable model. gpt-4o-mini is
+   a good default - it supports the file_search and web_search
+   tools used later in this tutorial and is inexpensive.
+
+4. Give the deployment a name when prompted (for example
+   gpt-4o-mini). Click Deploy and wait about a minute for it
+   to come up.
+
+5. Open the deployment's details page. Three values are listed
+   - copy each of them somewhere safe; you will paste them into
+   a .env file in step 5:
+
+       - Endpoint (looks like
+         https://your-resource.openai.azure.com)
+       - Key (a long random string, treat it like a password)
+       - Deployment name (whatever you typed above)
+
+   The endpoint and key are also available under Keys and
+   Endpoint in the portal sidebar if you do not see them on
+   the deployment page.
+
+That is all the portal work. Everything from here on is local.
+
+----------------------------------------------------------------
+Step 2. Install Python (and pick an editor)
+----------------------------------------------------------------
+
+You need Python 3.10 or newer. To check what you have, open a
+terminal and run:
+
+    python --version
+
+If that prints 3.10.x or higher, skip ahead to step 3.
+Otherwise install Python:
+
+    - On Windows: open the Microsoft Store, search for
+      "Python 3.12" (or any 3.10+ version), and install it.
+      Alternatively, download the installer from python.org
+      and tick "Add Python to PATH" on the first install
+      screen - that box is easy to miss.
+    - On macOS: install from python.org, or run
+      "brew install python" if you use Homebrew.
+    - On Linux: use your package manager, for example
+      "sudo apt install python3.12 python3.12-venv" on
+      Debian or Ubuntu.
+
+Run "python --version" again and confirm it now reports 3.10
+or newer. On some systems the command is "python3" instead of
+"python" - use whichever works.
+
+For editing the code, any text editor works. VS Code is a good
+free choice and is what the rest of this tutorial assumes when
+it mentions an editor. If you go with VS Code, also install
+Microsoft's Python extension from inside it (open the
+Extensions sidebar, search for Python, install the one
+published by Microsoft). You will point VS Code at your
+virtual environment in step 4.
+
+----------------------------------------------------------------
+Step 3. Make a working folder
+----------------------------------------------------------------
+
+Open a terminal, pick a folder name, and create it. The rest of
+this tutorial uses travel-bot. Adjust to taste.
+
+    mkdir travel-bot
+    cd travel-bot
+
+----------------------------------------------------------------
+Step 4. Create a virtual environment and install packages
+----------------------------------------------------------------
+
+You only need two packages: the OpenAI client library (which
+also speaks to Azure Foundry) and python-dotenv to read your
+key from a .env file.
+
+On Windows PowerShell:
+
+    python -m venv .venv
+    .\.venv\Scripts\python.exe -m pip install openai python-dotenv
+
+On macOS or Linux:
+
+    python -m venv .venv
+    .venv/bin/python -m pip install openai python-dotenv
+
+If you are using VS Code, point it at this new environment:
+
+    - Open the travel-bot folder in VS Code (File > Open
+      Folder, then pick travel-bot).
+    - Press Ctrl+Shift+P (Cmd+Shift+P on macOS) to open the
+      command palette, type "Python: Select Interpreter", and
+      pick the entry whose path contains .venv. On Windows it
+      ends in .venv\Scripts\python.exe; on macOS or Linux it
+      ends in .venv/bin/python.
+
+From that point on, VS Code's Run button, debugger, and any
+new integrated terminal will use the venv's Python
+automatically - no need to activate it manually.
+
+----------------------------------------------------------------
+Step 5. Save your Foundry credentials in a .env file
+----------------------------------------------------------------
+
+In the travel-bot folder create a file called .env with these
+three lines:
+
+    AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com
+    AZURE_OPENAI_API_KEY=your-api-key-here
+    AZURE_OPENAI_DEPLOYMENT=gpt-4o-mini
+
+Here is where each value comes from. If you copied them down
+in step 1 you can paste them now. Otherwise go back to
+https://ai.azure.com and open the project you created.
+
+AZURE_OPENAI_ENDPOINT
+    In the project sidebar choose Models + endpoints and click
+    your deployment. The Endpoint field near the top of the
+    page is the value you want - copy the URL up to and
+    including .openai.azure.com and DO NOT include any path
+    after that. The same value is also listed under Keys and
+    Endpoint in the sidebar.
+
+AZURE_OPENAI_API_KEY
+    On the same Keys and Endpoint page, two keys are listed
+    (KEY 1 and KEY 2). Either one works; click the copy icon
+    next to KEY 1. The key is a long random string. Treat it
+    like a password and never paste it anywhere public.
+
+AZURE_OPENAI_DEPLOYMENT
+    This is the deployment name you typed when you deployed
+    the model in step 1 (for example, gpt-4o-mini). It is the
+    NAME of the deployment, not the underlying model - they
+    can differ. If you forgot the name, the Models + endpoints
+    page lists every deployment in the project.
+
+Never commit this .env file anywhere public.
+
+----------------------------------------------------------------
+Step 6. Drop some brochures into a data folder
+----------------------------------------------------------------
+
+Make a brochures folder next to your .env file:
+
+    mkdir brochures
+
+Then create a couple of .txt files inside it. The exact content
+does not matter, but here is a sample for brochures/london.txt
+that gives the model something specific to find:
+
+    Margie's Travel London Package
+    Hotels: The Royal Grand, The Thames View, The Bloomsbury Inn.
+    Tours: Tower of London walking tour, Thames river cruise,
+    a day trip to Stonehenge.
+    Best time to visit: April through September.
+
+Add one or two more like that for other cities. The point is
+the model will search THESE files for destinations they cover
+and fall back to web search for anything else.
+
+----------------------------------------------------------------
+Step 7. Create travel_bot.py
+----------------------------------------------------------------
+
+This is the whole program. Save it in the travel-bot folder
+right next to .env and the brochures folder.
+
+    import glob
+    import os
+
+    from dotenv import load_dotenv
+    from openai import AzureOpenAI
+
+    load_dotenv()
+
+    ENDPOINT = os.environ["AZURE_OPENAI_ENDPOINT"]
+    API_KEY = os.environ["AZURE_OPENAI_API_KEY"]
+    DEPLOYMENT = os.environ["AZURE_OPENAI_DEPLOYMENT"]
+    API_VERSION = "2025-04-01-preview"
+
+    BROCHURE_DIR = "brochures"
+
+    INSTRUCTIONS = (
+        "You are a travel assistant for Margie's Travel. "
+        "Use the file_search tool to answer questions about "
+        "destinations covered by the uploaded brochures. Use "
+        "web_search for anything else, like current weather, "
+        "news, or destinations not in the brochures."
+    )
+
+
+    def main():
+        client = AzureOpenAI(
+            azure_endpoint=ENDPOINT,
+            api_key=API_KEY,
+            api_version=API_VERSION,
+        )
+
+        print("Creating vector store and uploading brochures...")
+        vector_store = client.vector_stores.create(name="travel-brochures")
+
+        file_paths = sorted(
+            glob.glob(os.path.join(BROCHURE_DIR, "*.txt"))
+            + glob.glob(os.path.join(BROCHURE_DIR, "*.pdf"))
+        )
+        if not file_paths:
+            print(f"No brochures found in {BROCHURE_DIR}/. "
+                  "Add some .txt or .pdf files and try again.")
+            client.vector_stores.delete(vector_store.id)
+            return
+
+        file_streams = [open(p, "rb") for p in file_paths]
+        try:
+            batch = client.vector_stores.file_batches.upload_and_poll(
+                vector_store_id=vector_store.id,
+                files=file_streams,
+            )
+            print(f"Uploaded {batch.file_counts.completed} brochures.")
+        finally:
+            for f in file_streams:
+                f.close()
+
+        try:
+            previous_id = None
+            print("\nAssistant: Ask me about travel. Type 'quit' to exit.")
+            while True:
+                user_text = input("\nYou: ")
+                if user_text.lower() == "quit":
+                    print("Assistant: Goodbye!")
+                    break
+
+                response = client.responses.create(
+                    model=DEPLOYMENT,
+                    instructions=INSTRUCTIONS,
+                    input=user_text,
+                    previous_response_id=previous_id,
+                    tools=[
+                        {"type": "file_search",
+                         "vector_store_ids": [vector_store.id]},
+                        {"type": "web_search"},
+                    ],
+                )
+                print("\nAssistant:", response.output_text)
+                previous_id = response.id
+        finally:
+            client.vector_stores.delete(vector_store.id)
+
+
+    if __name__ == "__main__":
+        main()
+
+----------------------------------------------------------------
+Step 8. What the script actually does
+----------------------------------------------------------------
+
+load_dotenv reads the .env file from step 5 and puts its values
+into os.environ. The three os.environ[...] lines pull them out.
+
+AzureOpenAI is the client object. It points at your Foundry
+endpoint and authenticates with your API key. The api_version
+string is the date-style preview tag Foundry uses; you almost
+never need to change it.
+
+vector_stores.create makes a brand new, empty vector store
+named travel-brochures. A vector store is where Foundry holds
+the indexed text from your files so the file_search tool can
+look things up by meaning, not just by keyword.
+
+file_batches.upload_and_poll uploads every file in the
+brochures folder into that vector store and waits until the
+indexing is done. file_counts.completed tells you how many
+made it through.
+
+The while loop is the conversation. Each iteration:
+    - reads one line from stdin (the user's question)
+    - calls responses.create with TWO tools defined: file_search
+      scoped to the vector store you just made, and web_search
+    - the model decides which tool (or none) to call
+    - it returns its answer in response.output_text
+    - we save response.id into previous_id; passing it on the
+      NEXT call is what threads the conversation together
+      without you having to resend the entire chat history
+
+The finally block deletes the vector store no matter how the
+loop exits. That keeps your Foundry resource clean.
+
+----------------------------------------------------------------
+Step 9. Run it
+----------------------------------------------------------------
+
+On Windows:
+
+    .\.venv\Scripts\python.exe travel_bot.py
+
+On macOS or Linux:
+
+    .venv/bin/python travel_bot.py
+
+You should see something like:
+
+    Creating vector store and uploading brochures...
+    Uploaded 3 brochures.
+
+    Assistant: Ask me about travel. Type 'quit' to exit.
+
+    You:
+
+Try a question your brochures cover, for example:
+    You: What hotels are mentioned for London?
+and the model should respond using file_search.
+
+Then try something live, for example:
+    You: What is the weather like in Tokyo right now?
+and watch it fall back to web_search.
+
+Type quit when you are done. The script deletes the vector
+store on the way out so nothing lingers in Foundry.
+
+----------------------------------------------------------------
+Troubleshooting
+----------------------------------------------------------------
+
+KeyError on AZURE_OPENAI_ENDPOINT
+    Your .env file is missing or in the wrong folder. It must
+    sit next to travel_bot.py. Confirm the variable names are
+    spelled exactly as shown in step 5.
+
+401 or 403 from Azure
+    The API key is wrong or does not have access to the
+    deployment. Copy a fresh key from the Foundry portal.
+
+404 on the deployment
+    AZURE_OPENAI_DEPLOYMENT does not match a deployment that
+    exists in your Foundry resource. Check the deployments
+    page in Foundry and copy the exact name.
+
+"tool not supported"
+    Your deployed model cannot use file_search or web_search.
+    Deploy a tool-capable model (gpt-4o-mini is a safe choice)
+    and update AZURE_OPENAI_DEPLOYMENT to its name.
+
+No brochures found in brochures/
+    Step 6 was skipped. Put at least one .txt or .pdf file in
+    the brochures folder and rerun.
+
+----------------------------------------------------------------
+That is the whole tutorial. End result: one .env file, one
+brochures folder, and one travel_bot.py - nothing else needed.
+----------------------------------------------------------------
